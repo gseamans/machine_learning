@@ -1,0 +1,148 @@
+---
+title: "Machine Learning Example"
+author: "Gary R Seamans"
+date: "April 2018"
+output:
+  pdf_document:
+    fig_caption: yes
+    latex_engine: xelatex
+  prettydoc::html_pretty:
+    fig_caption: yes
+    highlight: github
+    theme: cayman
+  word_document: default
+  html_document: default
+keep_md: yes
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=TRUE, echo=TRUE, message=FALSE}
+library(prettydoc)
+library(ggplot2)
+library(ggRandomForests)
+library(caret)
+library(knitr)
+library(rpart)
+library(e1071)
+library(naivebayes)
+#suppressMessages(library(rattle))
+library(rattle)
+library(randomForest)
+set.seed(500)
+```
+
+# Project Description
+
+In this project the goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the manner in which the participants did each exercise. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: [Weight Lifting Data Description]( http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Dataset). 
+
+# Loading the data
+
+The data sets were downloaded to a local directory from:
+
+- [Training Data](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+- [Test Data](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+```{r}
+wt_training <- read.csv(file = "./data/pml-training.csv")
+wt_test <- read.csv(file = "./data/pml-testing.csv")
+```
+
+# Exploratory Data Analysis and Cleaning
+
+Intial analysis shows that there were 100 columns containing NAs. Once these were removed from the data sets 60 columns remained. Of these 60 columns, 7 contained data unrelated to accelerometer measurements and were removed leaving 53 columns in the training and test sets.
+
+```{r}
+# Data dimensions
+dim(wt_training)
+dim(wt_test)
+# Check for columns containing NAs
+naColumns <- colnames(wt_test)[colSums(is.na(wt_test)) > 0]
+length(naColumns)
+# Remove columns with only NAs
+wtc_test <- wt_test[, !names(wt_test) %in% naColumns]
+wtc_train <- wt_training[, !names(wt_training) %in% naColumns]
+dim(wtc_test)
+dim(wtc_train)
+# Names of remaining columns
+names(wtc_train)
+# Remove columns unrelated to accelerometer readings
+rm_names <- c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", 
+              "cvtd_timestamp", "new_window", "num_window")
+wtc_test <- wtc_test[, !names(wtc_test) %in% rm_names]
+wtc_train <- wtc_train[, !names(wtc_train) %in% rm_names]
+dim(wtc_test)
+dim(wtc_train)
+# Change all of the classes, except *classe* to numeric
+wtc_train[1:52] <- lapply(wtc_train[1:52], as.numeric)
+wtc_test[1:52] <- lapply(wtc_test[1:52], as.numeric)
+# Get rid of the ID column
+wtc_test <- wtc_test[1:52]
+```
+
+# Partioning 
+
+The *wtc_trainig* set was partioned into *train* and *test* datsets. These data sets will be used for training and testing each of the models.
+
+```{r}
+# Create the partitions
+train_part <- createDataPartition(y = wtc_train$classe, p = 0.7, list = FALSE)
+train <- wtc_train[train_part,]
+test <- wtc_train[-train_part,]
+# Make all of the columns of interest the same class
+train[1:52] <- lapply(train[1:52], as.numeric)
+test[1:52] <- lapply(test[1:52], as.numeric)
+# Remove *classe* from the test set
+#test <- test[,-53]
+
+dim(train)
+dim(test)
+```
+
+# Modeling and Testing
+
+Three different methods were used: 
+ - Random Forests
+ - Naive Bayes
+ - Boosting with trees (gbm)
+
+Cross validation is builtin to Random Forests and Boosting with trees (gbm) and the defaults were used. Of the three different
+models used Naive Bayes performed the worst with defaults being used (but could be improved), Random Forests preformed the best closely followed by
+Boosting with trees.
+
+## Random Forest, Naive Bayes, and Boosting with trees models.
+
+```{r}
+# Create the Random Forest
+set.seed(1313)
+rf_fit <- randomForest(classe ~ ., data = train)
+rf_pred <- predict(rf_fit, test, type = "class")
+# Confusion matrix for the random forest
+confusionMatrix(rf_pred, test$classe)
+plot(rf_fit, main = " Random Forest Model")
+
+# Test it on the validation set
+
+# Create a Naive Bayes classifier
+nb_model <- naive_bayes(classe ~ ., data = train)
+nb_predict <- predict(nb_model, test)
+confusionMatrix(nb_predict, test$classe)
+# Plot examples of the marginal probabilities, only four were selected for the examples.
+par(mfrow=c(2,2))
+plot(nb_model, which = c("roll_belt","yaw_belt","accel_arm_y","yaw_forearm"))
+par(mfrow=c(1,1))
+# Boosting with trees *gbm*
+boost_model <- train(classe ~ ., method = "gbm", data = train, verbose = FALSE)
+boost_predict <- predict(boost_model, test)
+confusionMatrix(boost_predict, test$classe)
+plot(boost_model)
+```
+
+# Test Data predictions
+
+The best result was using Random Forests so that is what I used for the test data set.
+
+```{r}
+test_prediction <-  predict(rf_fit, wtc_test, type = "class")
+test_prediction
+```

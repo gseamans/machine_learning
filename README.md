@@ -1,2 +1,1 @@
-# machine_learning
-R Brownbag on machine learning
+# Brown bag on Machine Learning in R
